@@ -1,0 +1,276 @@
+package com.slotlock;
+
+import com.google.inject.Provides;
+import java.util.Arrays;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
+import net.runelite.api.Item;
+import net.runelite.api.ItemContainer;
+import net.runelite.api.KeyCode;
+import net.runelite.api.MenuAction;
+import net.runelite.api.MenuEntry;
+import net.runelite.api.ScriptID;
+import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.api.events.MenuOpened;
+import net.runelite.api.events.ScriptPostFired;
+import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.widgets.Widget;
+import net.runelite.client.callback.ClientThread;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDescriptor;
+
+@Slf4j
+@PluginDescriptor(
+	name = "SlotLock",
+	description = "Lock inventory items to preferred visual slots while other items flow around them",
+	tags = {"inventory", "layout", "slots", "toa", "raid"},
+	enabledByDefault = false
+)
+public class SlotLockPlugin extends Plugin
+{
+	private static final int COLUMNS = 4;
+	private static final int SLOT_X_STEP = 42;
+	private static final int SLOT_Y_STEP = 36;
+
+	@Inject
+	private Client client;
+
+	@Inject
+	private ClientThread clientThread;
+
+	@Inject
+	private ConfigManager configManager;
+
+	@Inject
+	private SlotLockConfig config;
+
+	private int[] physicalToVisual = identityLayout();
+
+	@Provides
+	SlotLockConfig provideConfig(ConfigManager configManager)
+	{
+		return configManager.getConfig(SlotLockConfig.class);
+	}
+
+	@Override
+	protected void startUp()
+	{
+		clientThread.invokeLater(this::refreshLayout);
+		log.debug("SlotLock started");
+	}
+
+	@Override
+	protected void shutDown()
+	{
+		clientThread.invoke(this::clearForcedPositions);
+		physicalToVisual = identityLayout();
+		log.debug("SlotLock stopped");
+	}
+
+	@Subscribe
+	public void onItemContainerChanged(ItemContainerChanged event)
+	{
+		if (event.getContainerId() == InventoryID.INV)
+		{
+			refreshLayout();
+		}
+	}
+
+	@Subscribe
+	public void onScriptPostFired(ScriptPostFired event)
+	{
+		if (event.getScriptId() != ScriptID.INVENTORY_DRAWITEM)
+		{
+			return;
+		}
+
+		Widget itemWidget = client.getScriptActiveWidget();
+		if (itemWidget != null && itemWidget.getParentId() == InterfaceID.Inventory.ITEMS)
+		{
+			positionWidget(itemWidget);
+		}
+	}
+
+	@Subscribe
+	public void onConfigChanged(ConfigChanged event)
+	{
+		if (SlotLockConfig.GROUP.equals(event.getGroup()))
+		{
+			clientThread.invokeLater(this::refreshLayout);
+		}
+	}
+
+	@Subscribe
+	public void onMenuOpened(MenuOpened event)
+	{
+		if (config.requireShift() && !client.isKeyPressed(KeyCode.KC_SHIFT))
+		{
+			return;
+		}
+
+		MenuEntry[] entries = event.getMenuEntries();
+		for (int index = entries.length - 1; index >= 0; index--)
+		{
+			MenuEntry entry = entries[index];
+			Widget widget = entry.getWidget();
+
+			if (widget == null
+				|| widget.getParentId() != InterfaceID.Inventory.ITEMS
+				|| widget.getItemId() <= 0
+				|| !"Examine".equals(entry.getOption()))
+			{
+				continue;
+			}
+
+			int physicalSlot = widget.getIndex();
+			if (physicalSlot < 0 || physicalSlot >= SlotLocks.INVENTORY_SIZE)
+			{
+				continue;
+			}
+
+			int visualSlot = visualSlotForPhysical(physicalSlot);
+			int itemId = widget.getItemId();
+			int[] locks = SlotLocks.parse(config.lockedSlots());
+			boolean lockedHere = locks[visualSlot] == itemId;
+
+			client.createMenuEntry(index)
+				.setOption(lockedHere ? "Unlock SlotLock slot" : "Lock to SlotLock slot")
+				.setTarget(entry.getTarget() + " <col=9f9f9f>(slot " + (visualSlot + 1) + ")</col>")
+				.setType(MenuAction.RUNELITE)
+				.onClick(e ->
+				{
+					int[] updatedLocks = SlotLocks.parse(config.lockedSlots());
+					updatedLocks[visualSlot] = lockedHere ? SlotLocks.EMPTY : itemId;
+					configManager.setConfiguration(
+						SlotLockConfig.GROUP,
+						"lockedSlots",
+						SlotLocks.serialize(updatedLocks)
+					);
+					refreshLayout();
+				});
+
+			break;
+		}
+	}
+
+	private void refreshLayout()
+	{
+		int[] inventoryIds = currentInventoryIds();
+		int[] locks = SlotLocks.parse(config.lockedSlots());
+		physicalToVisual = SlotLayout.buildPhysicalToVisual(inventoryIds, locks);
+		applyLayoutToCurrentWidgets();
+	}
+
+	private int[] currentInventoryIds()
+	{
+		int[] ids = new int[SlotLocks.INVENTORY_SIZE];
+		Arrays.fill(ids, SlotLocks.EMPTY);
+
+		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+		if (inventory == null)
+		{
+			return ids;
+		}
+
+		Item[] items = inventory.getItems();
+		for (int slot = 0; slot < Math.min(items.length, ids.length); slot++)
+		{
+			if (items[slot] != null)
+			{
+				ids[slot] = items[slot].getId();
+			}
+		}
+
+		return ids;
+	}
+
+	private void applyLayoutToCurrentWidgets()
+	{
+		Widget inventoryWidget = client.getWidget(InterfaceID.Inventory.ITEMS);
+		if (inventoryWidget == null)
+		{
+			return;
+		}
+
+		for (Widget child : inventoryWidget.getDynamicChildren())
+		{
+			if (child != null)
+			{
+				positionWidget(child);
+			}
+		}
+	}
+
+	private void positionWidget(Widget widget)
+	{
+		int physicalSlot = widget.getIndex();
+		if (physicalSlot < 0 || physicalSlot >= SlotLocks.INVENTORY_SIZE)
+		{
+			return;
+		}
+
+		int visualSlot = visualSlotForPhysical(physicalSlot);
+		if (visualSlot < 0)
+		{
+			widget.setForcedPosition(-1, -1);
+			return;
+		}
+
+		int originX = widget.getOriginalX() - (physicalSlot % COLUMNS) * SLOT_X_STEP;
+		int originY = widget.getOriginalY() - (physicalSlot / COLUMNS) * SLOT_Y_STEP;
+		int targetX = originX + (visualSlot % COLUMNS) * SLOT_X_STEP;
+		int targetY = originY + (visualSlot / COLUMNS) * SLOT_Y_STEP;
+
+		if (visualSlot == physicalSlot)
+		{
+			widget.setForcedPosition(-1, -1);
+		}
+		else
+		{
+			widget.setForcedPosition(targetX, targetY);
+		}
+	}
+
+	private int visualSlotForPhysical(int physicalSlot)
+	{
+		if (physicalSlot < 0 || physicalSlot >= physicalToVisual.length)
+		{
+			return physicalSlot;
+		}
+
+		int visual = physicalToVisual[physicalSlot];
+		return visual >= 0 ? visual : physicalSlot;
+	}
+
+	private void clearForcedPositions()
+	{
+		Widget inventoryWidget = client.getWidget(InterfaceID.Inventory.ITEMS);
+		if (inventoryWidget == null)
+		{
+			return;
+		}
+
+		for (Widget child : inventoryWidget.getDynamicChildren())
+		{
+			if (child != null)
+			{
+				child.setForcedPosition(-1, -1);
+			}
+		}
+	}
+
+	private static int[] identityLayout()
+	{
+		int[] layout = new int[SlotLocks.INVENTORY_SIZE];
+		for (int slot = 0; slot < layout.length; slot++)
+		{
+			layout[slot] = slot;
+		}
+		return layout;
+	}
+}
