@@ -95,10 +95,18 @@ public class SlotLockPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (SlotLockConfig.GROUP.equals(event.getGroup()))
+		if (!SlotLockConfig.GROUP.equals(event.getGroup()))
 		{
-			clientThread.invokeLater(this::refreshLayout);
+			return;
 		}
+
+		if ("resetLocks".equals(event.getKey()) && Boolean.parseBoolean(event.getNewValue()))
+		{
+			configManager.unsetConfiguration(SlotLockConfig.GROUP, "lockedSlots");
+			configManager.setConfiguration(SlotLockConfig.GROUP, "resetLocks", false);
+		}
+
+		clientThread.invokeLater(this::refreshLayout);
 	}
 
 	@Subscribe
