@@ -20,6 +20,16 @@ public interface SlotLockConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "resetLocks",
+		name = "Clear all locks",
+		description = "Reset every saved SlotLock reservation"
+	)
+	default boolean resetLocks()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "lockedSlots",
 		name = "Locked slots",
 		description = "Internal SlotLock preset data",
