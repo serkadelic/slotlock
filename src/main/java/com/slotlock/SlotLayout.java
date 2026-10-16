@@ -18,6 +18,11 @@ final class SlotLayout
 		int[] lockedVisualSlots,
 		int[] previousPhysicalToVisual)
 	{
+		if (!hasAnyLock(lockedVisualSlots))
+		{
+			return identityLayout();
+		}
+
 		int[] physicalToVisual = new int[SlotLocks.INVENTORY_SIZE];
 		Arrays.fill(physicalToVisual, SlotLocks.EMPTY);
 
@@ -154,6 +159,23 @@ final class SlotLayout
 		}
 
 		return physicalToVisual;
+	}
+
+	private static boolean hasAnyLock(int[] lockedVisualSlots)
+	{
+		if (lockedVisualSlots == null)
+		{
+			return false;
+		}
+
+		for (int visual = 0; visual < Math.min(lockedVisualSlots.length, SlotLocks.INVENTORY_SIZE); visual++)
+		{
+			if (lockedVisualSlots[visual] > 0)
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static int findPhysicalForVisual(int[] physicalToVisual, int visual)
