@@ -3,7 +3,6 @@ package com.slotlock;
 import com.google.inject.Provides;
 import java.util.Arrays;
 import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
@@ -23,8 +22,9 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Slf4j
 @PluginDescriptor(
 	name = "SlotLock",
 	description = "Lock inventory items to preferred visual slots while other items flow around them",
@@ -33,6 +33,8 @@ import net.runelite.client.plugins.PluginDescriptor;
 )
 public class SlotLockPlugin extends Plugin
 {
+	private static final Logger log = LoggerFactory.getLogger(SlotLockPlugin.class);
+
 	@Inject
 	private Client client;
 
