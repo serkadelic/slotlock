@@ -33,10 +33,6 @@ import net.runelite.client.plugins.PluginDescriptor;
 )
 public class SlotLockPlugin extends Plugin
 {
-	private static final int COLUMNS = 4;
-	private static final int SLOT_X_STEP = 42;
-	private static final int SLOT_Y_STEP = 36;
-
 	@Inject
 	private Client client;
 
@@ -231,19 +227,26 @@ public class SlotLockPlugin extends Plugin
 			return;
 		}
 
-		int originX = widget.getOriginalX() - (physicalSlot % COLUMNS) * SLOT_X_STEP;
-		int originY = widget.getOriginalY() - (physicalSlot / COLUMNS) * SLOT_Y_STEP;
-		int targetX = originX + (visualSlot % COLUMNS) * SLOT_X_STEP;
-		int targetY = originY + (visualSlot / COLUMNS) * SLOT_Y_STEP;
-
 		if (visualSlot == physicalSlot)
 		{
 			widget.setForcedPosition(-1, -1);
+			return;
 		}
-		else
+
+		Widget parent = widget.getParent();
+		Widget targetSlotWidget = parent != null ? parent.getChild(visualSlot) : null;
+		if (targetSlotWidget == null)
 		{
-			widget.setForcedPosition(targetX, targetY);
+			// Never guess coordinates. If RuneLite does not expose the target slot,
+			// leave the real widget in its normal position.
+			widget.setForcedPosition(-1, -1);
+			return;
 		}
+
+		widget.setForcedPosition(
+			targetSlotWidget.getOriginalX(),
+			targetSlotWidget.getOriginalY()
+		);
 	}
 
 	private int visualSlotForPhysical(int physicalSlot)
