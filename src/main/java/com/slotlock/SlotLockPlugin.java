@@ -154,6 +154,16 @@ public class SlotLockPlugin extends Plugin
 					refreshLayout();
 				});
 
+			client.createMenuEntry(index)
+				.setOption("Clear all SlotLock locks")
+				.setTarget("")
+				.setType(MenuAction.RUNELITE)
+				.onClick(e ->
+				{
+					configManager.unsetConfiguration(SlotLockConfig.GROUP, "lockedSlots");
+					refreshLayout();
+				});
+
 			break;
 		}
 	}
