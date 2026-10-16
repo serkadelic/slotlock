@@ -10,6 +10,14 @@ final class SlotLayout
 
 	static int[] buildPhysicalToVisual(int[] inventoryItemIds, int[] lockedVisualSlots)
 	{
+		return buildPhysicalToVisual(inventoryItemIds, lockedVisualSlots, identityLayout());
+	}
+
+	static int[] buildPhysicalToVisual(
+		int[] inventoryItemIds,
+		int[] lockedVisualSlots,
+		int[] previousPhysicalToVisual)
+	{
 		int[] physicalToVisual = new int[SlotLocks.INVENTORY_SIZE];
 		Arrays.fill(physicalToVisual, SlotLocks.EMPTY);
 
@@ -17,13 +25,34 @@ final class SlotLayout
 		boolean[] usedVisual = new boolean[SlotLocks.INVENTORY_SIZE];
 
 		/*
-		 * First, place every locked item that is actually present into its preferred
-		 * visual cell.
+		 * Preserve stable ownership for duplicate locked items. If the physical widget
+		 * that previously occupied a locked visual cell still contains the correct
+		 * item, keep that exact widget assigned there.
 		 */
 		for (int visual = 0; visual < SlotLocks.INVENTORY_SIZE; visual++)
 		{
 			int lockedItemId = itemAt(lockedVisualSlots, visual);
 			if (lockedItemId <= 0)
+			{
+				continue;
+			}
+
+			int previousPhysical = findPhysicalForVisual(previousPhysicalToVisual, visual);
+			if (previousPhysical != SlotLocks.EMPTY
+				&& !usedPhysical[previousPhysical]
+				&& itemAt(inventoryItemIds, previousPhysical) == lockedItemId)
+			{
+				assign(physicalToVisual, usedPhysical, usedVisual, previousPhysical, visual);
+			}
+		}
+
+		/*
+		 * Place any remaining present locked items into their preferred visual cells.
+		 */
+		for (int visual = 0; visual < SlotLocks.INVENTORY_SIZE; visual++)
+		{
+			int lockedItemId = itemAt(lockedVisualSlots, visual);
+			if (lockedItemId <= 0 || usedVisual[visual])
 			{
 				continue;
 			}
@@ -37,13 +66,22 @@ final class SlotLayout
 
 		/*
 		 * If a locked item is missing, move a genuinely empty physical inventory
-		 * widget into that visual cell. This is what creates a real reserved hole
-		 * without leaving another widget underneath it.
+		 * widget into that visual cell. This creates a real reserved hole without
+		 * leaving another widget underneath it.
 		 */
 		for (int visual = 0; visual < SlotLocks.INVENTORY_SIZE; visual++)
 		{
 			if (usedVisual[visual] || itemAt(lockedVisualSlots, visual) <= 0)
 			{
+				continue;
+			}
+
+			int preferredEmpty = findPhysicalForVisual(previousPhysicalToVisual, visual);
+			if (preferredEmpty != SlotLocks.EMPTY
+				&& !usedPhysical[preferredEmpty]
+				&& itemAt(inventoryItemIds, preferredEmpty) <= 0)
+			{
+				assign(physicalToVisual, usedPhysical, usedVisual, preferredEmpty, visual);
 				continue;
 			}
 
@@ -76,8 +114,8 @@ final class SlotLayout
 
 		/*
 		 * A completely full inventory cannot preserve a missing reserved hole because
-		 * there is no empty physical widget available. In that edge case, never hide
-		 * an item: let overflow occupy any remaining visual cell.
+		 * there is no empty physical widget available. Never hide an item: overflow
+		 * may occupy an otherwise-reserved visual cell.
 		 */
 		for (int physical = 0; physical < SlotLocks.INVENTORY_SIZE; physical++)
 		{
@@ -96,9 +134,8 @@ final class SlotLayout
 		}
 
 		/*
-		 * Finally assign every remaining empty physical widget to every remaining
-		 * visual cell. This makes the result a true 28-slot permutation: one physical
-		 * widget per visual cell, with no overlaps and no unmapped hitboxes.
+		 * Assign every remaining empty physical widget to every remaining visual cell.
+		 * The result is always a true 28-slot permutation.
 		 */
 		for (int physical = 0; physical < SlotLocks.INVENTORY_SIZE; physical++)
 		{
@@ -117,6 +154,23 @@ final class SlotLayout
 		}
 
 		return physicalToVisual;
+	}
+
+	private static int findPhysicalForVisual(int[] physicalToVisual, int visual)
+	{
+		if (physicalToVisual == null)
+		{
+			return SlotLocks.EMPTY;
+		}
+
+		for (int physical = 0; physical < Math.min(physicalToVisual.length, SlotLocks.INVENTORY_SIZE); physical++)
+		{
+			if (physicalToVisual[physical] == visual)
+			{
+				return physical;
+			}
+		}
+		return SlotLocks.EMPTY;
 	}
 
 	private static int findMatchingPhysical(int[] inventoryItemIds, boolean[] usedPhysical, int itemId)
@@ -182,5 +236,15 @@ final class SlotLayout
 	private static int itemAt(int[] values, int index)
 	{
 		return values != null && index >= 0 && index < values.length ? values[index] : SlotLocks.EMPTY;
+	}
+
+	private static int[] identityLayout()
+	{
+		int[] layout = new int[SlotLocks.INVENTORY_SIZE];
+		for (int slot = 0; slot < layout.length; slot++)
+		{
+			layout[slot] = slot;
+		}
+		return layout;
 	}
 }
