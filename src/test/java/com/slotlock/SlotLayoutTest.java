@@ -66,6 +66,31 @@ public class SlotLayoutTest
 	}
 
 	@Test
+	public void survivingDuplicateStaysInItsPreviousLockedCell()
+	{
+		int[] inventory = emptyInventory();
+		inventory[5] = 100;
+		inventory[9] = 100;
+
+		int[] locks = SlotLocks.emptyLocks();
+		locks[0] = 100;
+		locks[4] = 100;
+
+		int[] previous = SlotLayout.buildPhysicalToVisual(inventory, locks);
+		assertEquals(0, previous[5]);
+		assertEquals(4, previous[9]);
+
+		// The first copy is consumed. The surviving physical widget should remain
+		// associated with visual slot 5 (zero-based visual index 4), not jump to slot 1.
+		inventory[5] = SlotLocks.EMPTY;
+		int[] updated = SlotLayout.buildPhysicalToVisual(inventory, locks, previous);
+
+		assertEquals(4, updated[9]);
+		assertEquals(0, updated[5]);
+		assertPermutation(updated);
+	}
+
+	@Test
 	public void allTwentyEightPhysicalWidgetsAlwaysMapToUniqueVisualCells()
 	{
 		int[] inventory = emptyInventory();
