@@ -168,7 +168,7 @@ public class SlotLockPlugin extends Plugin
 	{
 		int[] inventoryIds = currentInventoryIds();
 		int[] locks = SlotLocks.parse(config.lockedSlots());
-		physicalToVisual = SlotLayout.buildPhysicalToVisual(inventoryIds, locks);
+		physicalToVisual = SlotLayout.buildPhysicalToVisual(inventoryIds, locks, physicalToVisual);
 		applyLayoutToCurrentWidgets();
 	}
 
