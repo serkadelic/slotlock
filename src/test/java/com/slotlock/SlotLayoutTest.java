@@ -111,6 +111,29 @@ public class SlotLayoutTest
 	}
 
 	@Test
+	public void noLocksLeavesRuneScapeInventoryCompletelyUntouched()
+	{
+		int[] inventory = emptyInventory();
+		inventory[0] = 100;
+		inventory[7] = 200;
+		inventory[19] = 300;
+
+		int[] locks = SlotLocks.emptyLocks();
+		int[] previous = new int[SlotLocks.INVENTORY_SIZE];
+		for (int i = 0; i < previous.length; i++)
+		{
+			previous[i] = previous.length - 1 - i;
+		}
+
+		int[] layout = SlotLayout.buildPhysicalToVisual(inventory, locks, previous);
+		for (int slot = 0; slot < SlotLocks.INVENTORY_SIZE; slot++)
+		{
+			assertEquals(slot, layout[slot]);
+		}
+		assertPermutation(layout);
+	}
+
+	@Test
 	public void fullInventoryFallsBackWithoutHidingAnyItem()
 	{
 		int[] inventory = new int[SlotLocks.INVENTORY_SIZE];
